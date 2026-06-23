@@ -153,9 +153,4 @@ To run daily after market close (≈15:30 NPT), add to Windows Task Scheduler or
 0 10 * * 0-4 cd /path/to/nepse_scraper && source venv/bin/activate && python scraper.py --today
 ```
 
----
 
-## License
-
-MIT — use freely for personal/research purposes. Do not resell the data.
-# Nepse_data_scraper
