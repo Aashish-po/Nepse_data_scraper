@@ -1,154 +1,168 @@
-# NEPSE Daily Data Scraper
+# 📈 Nepse Daily Data Scraper
 
-Pulls daily share price / floor sheet data from three sources and saves clean CSV files locally. No Selenium, no Chrome driver — just `requests` + `BeautifulSoup`.
-
----
-
-## Sources
-
-| Source | Data | URL |
-|---|---|---|
-| **ShareSansar** | Today's Share Price (OHLCV, VWAP, turnover) | `sharesansar.com/today-share-price` |
-| **Merolagani** | Floor Sheet (transaction-level: buyer, seller, qty, rate) | `merolagani.com/Floorsheet.aspx` |
-| **NepseTrading** | Daily price summary | `nepsetrading.com` |
+A robust Python scraper that extracts daily share price and floor‑sheet data from **ShareSansar** and **Merolagani**, saving clean CSV datasets for Nepal Stock Exchange (NEPSE) analysis.
 
 ---
 
-## Setup
+## 🌟 Features
 
-```bash
-# 1. Create a virtual environment (recommended)
-python -m venv venv
-
-# Windows / Git Bash
-source venv/Scripts/activate
-
-# Mac / Linux
-source venv/bin/activate
-
-# 2. Install dependencies
-pip install -r requirements.txt
-```
+- **Dual‑source scraping** – Pulls OHLCV, VWAP, turnover from ShareSansar and transaction‑level floor sheets from Merolagani.  
+- **Flexible date ranges** – Scrape a single day, a custom range, or the last N trading days.  
+- **Automatic weekend & holiday skipping** – Skips weekends automatically; logs a warning and moves on when a source returns no data (e.g. public holidays).  
+- **Force‑redownload mode** – Overwrite existing CSV files with fresh data.  
+- **Organized output** – Data saved in `data/sharesansar/` and `data/merolagani/` with date‑based filenames.  
+- **Respectful scraping** – Built‑in delays to avoid rate‑limits and 403 errors.  
+- **Easy automation** – Ready‑to‑use cron / Task Scheduler snippets for daily runs.  
+- **Well‑documented & extensible** – Clear code, inline comments, and contribution guide.
 
 ---
 
-## Usage
+## 📦 Installation
 
-```bash
-# Scrape the last 14 trading days from ALL sources
-python scraper.py
+### Prerequisites
 
-# Scrape today only (all sources)
-python scraper.py --today
+- Python 3.9 or higher
+- Google Chrome (required for ShareSansar; the matching ChromeDriver auto-installs)
+- Git (optional, for cloning)
+- Git Bash / PowerShell / Terminal
 
-# Scrape a specific source
-python scraper.py --source sharesansar
-python scraper.py --source merolagani
-python scraper.py --source nepsetrading
+### Step‑by‑step
 
-# Custom date range
-python scraper.py --start 2025-01-01 --end 2025-03-31
+1. **Clone the repository** (or download the ZIP)
 
-# One source + date range
-python scraper.py --source sharesansar --start 2025-06-01 --end 2025-06-20
+   ```bash
+   git clone https://github.com/your-username/Nepse-data-scraper.git
+   cd Nepse-data-scraper
+   ```
 
-# Force re-download (overwrite existing CSVs)
-python scraper.py --today --force
-```
+2. **Create a virtual environment** (recommended)
+
+   ```bash
+   # Windows (PowerShell / CMD)
+   python -m venv venv
+   .\venv\Scripts\activate
+
+   # macOS / Linux
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+> 💡 **Tip:** If you encounter SSL issues on Windows, run `pip install --upgrade certifi certifi==2023.7.22`.
 
 ---
 
-## Output Structure
+## 🚀 Usage
+
+Run the scraper from the project root after activating the virtual environment.
+
+| Command | Description |
+|---------|-------------|
+| `python scraper.py` | Scrape the last 14 trading days from **both** sources. |
+| `python scraper.py --today` | Scrape **today’s** data only (all sources). |
+| `python scraper.py --source sharesansar` | Scrape last 14 days **only** from ShareSansar. |
+| `python scraper.py --source merolagani --today` | Scrape today **only** from Merolagani. |
+| `python scraper.py --start 2025-01-01 --end 2025-03-31` | Custom date range (inclusive) for both sources. |
+| `python scraper.py --source sharesansar --start 2025-06-01 --end 2025-06-20 --force` | Custom range, single source, **force** re‑download. |
+| `python scraper.py --help` | Show full help menu. |
+
+### Example output structure
 
 ```
 data/
 ├── sharesansar/
-│   ├── 2025-06-15.csv      ← Sunday (trading day)
-│   ├── 2025-06-16.csv
+│   ├── 2025-06-16.csv   ← Monday (trading day)
+│   ├── 2025-06-17.csv
 │   └── ...
-├── merolagani/
-│   ├── 2025-06-15.csv
-│   └── ...
-└── nepsetrading/
-    ├── 2025-06-15.csv
+└── merolagani/
+    ├── 2025-06-16.csv
     └── ...
 ```
 
-> **Note:** NEPSE trades **Sunday–Thursday**. The scraper automatically skips Fridays and Saturdays.  
-> Public holidays are handled gracefully — the scraper logs a warning and moves on when a site returns no data.
+> 📅 **Note:** NEPSE trades **Sunday–Thursday**. The scraper automatically skips  Saturdays, Sunday, and logs a warning for public holidays when no data is returned.
 
 ---
 
-## CSV Columns
+## 🛠️ Technology Stack
 
-### ShareSansar (`data/sharesansar/`)
+| Category | Tools / Libraries |
+|----------|-------------------|
+| **Language** | Python 3.9+ |
+| **HTTP Requests** | `requests` |
+| **Browser Automation** | `selenium`, `chromedriver-autoinstaller` (ShareSansar) |
+| **HTML Parsing** | `beautifulsoup4`, `lxml` |
+| **Data Handling** | `pandas` |
+| **Date Utilities** | `datetime` (built-in) |
+| **CLI Parsing** | `argparse` (built‑in) |
+| **Execution** | Standard CPython interpreter |
 
-| Column | Description |
-|---|---|
-| `date` | Trading date (YYYY-MM-DD) |
-| `symbol` | Stock ticker |
-| `conf` | Number of confirmed transactions |
-| `open` | Opening price |
-| `high` | Day high |
-| `low` | Day low |
-| `close` | Closing price |
-| `vwap` | Volume-weighted average price |
-| `volume` | Total shares traded |
-| `prev_close` | Previous closing price |
-| `turnover` | Total turnover (NPR) |
-| `transactions` | Number of transactions |
-| `diff` | Price change |
-| `diff_pct` | Price change % |
-
-### Merolagani (`data/merolagani/`)
-
-| Column | Description |
-|---|---|
-| `date` | Trading date |
-| `Transaction No` | Unique floor sheet transaction ID |
-| `Symbol` | Stock ticker |
-| `Buyer` | Buyer broker code |
-| `Seller` | Seller broker code |
-| `Quantity` | Shares traded |
-| `Rate` | Trade price |
-| `Amount` | Total transaction value |
+*All dependencies are listed in `requirements.txt`.*
 
 ---
 
-## Troubleshooting
+## 🤝 Contributing
 
-### "Expected JSON from ShareSansar, got text/html"
+We welcome contributions! Please follow these steps:
 
-The site changed its AJAX endpoint. Open `scraper.py`, find `SharesansarScraper`, and:
+1. **Fork** the repository on GitHub.
+2. **Create a topic branch** – `git checkout -b feature/amazing-feature`.
+3. **Make your changes** – keep code clean, add docstrings, and follow PEP 8.
+4. **Test** – run `python scraper.py --help` to ensure the CLI still works.
+5. **Commit** – `git commit -m "Add amazing feature"`.
+6. **Push** – `git push origin feature/amazing-feature`.
+7. **Open a Pull Request** – describe the problem and solution.
 
-1. Open `https://sharesansar.com/today-share-price` in Chrome
-2. Open DevTools → Network → Filter by `XHR/Fetch`
-3. Select a date → observe the request URL and payload
-4. Update `PAGE_URL` and `AJAX_COLS` to match
+### Reporting Issues
 
-### Merolagani pagination stops early
+- Use the **Issues** tab.
+- Include:
+  - OS and Python version.
+  - Exact command that failed.
+  - Full error traceback.
+  - Any relevant screenshots or network logs.
 
-The ASP.NET pager structure may have changed. Check `_parse_total_pages()` — verify the `<span id>` matches the live page source.
+### Code Style
 
-### NepseTrading returns empty data
-
-NepseTrading's URL structure changes more frequently. Update the `_candidates` list in `NepseTradingScraper` to match the current routing.
-
-### General 403 / rate-limit errors
-
-The scraper already includes per-page and per-date courtesy delays. If you still hit blocks:
-
-- Increase `INTER_DATE_DELAY` at the top of `scraper.py`
-- Run for fewer days at a time
-- Run during off-peak hours (avoid during NEPSE market hours 11:00–15:00 NPT)
+- We follow **PEP 8**. Consider using `ruff` or `flake8` for linting.
+- Docstrings follow the **NumPy** style.
 
 ---
 
-## Automation (optional)
+## 📜 License
 
-To run daily after market close (≈15:30 NPT), add to Windows Task Scheduler or a cron job:
+This project is licensed under the **MIT License** – see the [`LICENSE`](LICENSE) file for details.
 
-```bash
-# cron (Linux/Mac) — runs at 10:00 UTC (≈15:45 NPT) Sun–Thu
-0 10 * * 0-4 cd /path/to/nepse_scraper && source venv/bin/activate && python scraper.py --today
-```
+---
+
+## 🛠️ Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| ShareSansar returns no data / timeout | The page layout or element IDs changed, or ChromeDriver is missing. | Ensure Chrome is installed (ChromeDriver auto-installs). Open `https://www.sharesansar.com/today-share-price`, verify the `#fromdate` input and `#btn_todayshareprice_submit` button still exist, and update the XPaths in `SharesansarScraper._scrape()`. |
+| Merolagani pagination stops early | ASP.NET pager markup changed. | Inspect the page source, locate the `<span id>` that holds the total page count, adjust `_parse_total_pages()`. |
+| HTTP 403 / rate‑limit errors | Too many requests in a short time. | Increase `INTER_DATE_DELAY` at the top of `scraper.py`, run fewer days at a time, or run outside market hours (11:00–15:00 NPT). |
+| Empty CSV files | No data returned (holiday or weekend). | The scraper logs a warning and skips the day; verify the date is a NEPSE trading day. |
+| `ModuleNotFoundError` | Missing dependencies. | Re‑run `pip install -r requirements.txt` inside the activated venv. |
+
+If your issue isn’t listed, please open an issue with the details above.
+
+---
+
+## 🚀 Get Involved
+
+If you find this scraper useful:
+
+- **Star** the repository 🌟
+- **Share** it with fellow traders, analysts, or students.
+- **Contribute** code, documentation, or feedback.
+
+Let’s build better tools for the Nepalese capital market together!
+
+---
+
+*Made with ❤️ for the NEPSE community.*

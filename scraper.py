@@ -5,8 +5,6 @@ NEPSE Daily Data Scraper
 Pulls daily floor sheet / today's share price from:
    • ShareSansar  (www.sharesansar.com/today-share-price)
    • Merolagani   (merolagani.com/Floorsheet.aspx)
-   • NepseTrading (nepsetrading.com)
-
 Usage
 -----
    python scraper.py                          # last 7 trading days, all sources
@@ -19,7 +17,6 @@ Output
 ------
    data/sharesansar/YYYY-MM-DD.csv
    data/merolagani/YYYY-MM-DD.csv
-   data/nepsetrading/YYYY-MM-DD.csv
 """
 
 from __future__ import annotations
@@ -500,115 +497,11 @@ class MerolaganiScraper(BaseScraper):
         return final
 
 
-# # ─── NepseTrading ─────────────────────────────────────────────────────────────
-#
-#
-# class NepseTradingScraper(BaseScraper):
-#     """
-#     Daily price data from nepsetrading.com.
-#
-#     Tries two strategies in order:
-#       1. JSON REST endpoint (if the site exposes one)
-#       2. HTML table parsing (universal fallback)
-#
-#     Adjust CANDIDATES if the URL structure changes.
-#     """
-#
-#     name = "nepsetrading"
-#
-#     # Ordered list of (url, params_factory) to try
-#     @property
-#     def _candidates(self):
-#         return [
-#             (
-#                 "https://nepsetrading.com/trading/daily-price",
-#                 lambda d: {"date": d.strftime("%Y-%m-%d")},
-#             ),
-#             (
-#                 "https://nepsetrading.com/daily-price",
-#                 lambda d: {"date": d.strftime("%Y-%m-%d")},
-#             ),
-#             ("https://nepsetrading.com", lambda d: {}),
-#         ]
-#
-#     def _try_json(self, d: date) -> Optional[pd.DataFrame]:
-#         """Attempt to discover a REST/JSON endpoint."""
-#         json_urls = [
-#             "https://nepsetrading.com/api/v1/trading/daily-price",
-#             "https://nepsetrading.com/api/daily-price",
-#         ]
-#         date_str = d.strftime("%Y-%m-%d")
-#         for url in json_urls:
-#             try:
-#                 r = self.session.get(
-#                     url,
-#                     params={"date": date_str, "page": 1, "per_page": 2000},  # type: ignore
-#                     headers={"Accept": "application/json"},
-#                     timeout=REQUEST_TIMEOUT,
-#                 )
-#                 if r.status_code == 200 and "json" in r.headers.get("Content-Type", ""):
-#                     data = r.json()
-#                     records = (
-#                         data
-#                         if isinstance(data, list)
-#                         else data.get("data") or data.get("records") or []
-#                     )
-#                     if records:
-#                         df = pd.DataFrame(records)
-#                         df.insert(0, "date", d.isoformat())
-#                         return df
-#             except Exception:
-#                 pass
-#         return None
-#
-#     def _try_html(self, d: date) -> Optional[pd.DataFrame]:
-#         for url, params_fn in self._candidates:
-#             try:
-#                 r = self.session.get(
-#                     url,
-#                     params=params_fn(d),  # type: ignore
-#                     headers={"Referer": "https://nepsetrading.com/"},
-#                     timeout=REQUEST_TIMEOUT,
-#                 )
-#                 if r.status_code != 200:
-#                     continue
-#                 soup = BeautifulSoup(r.text, "html.parser")
-#                 table = soup.find("table")
-#                 if not table:
-#                     continue
-#                 headers = [th.get_text(strip=True) for th in table.find_all("th")]
-#                 tbody = table.find("tbody") or table
-#                 rows = [
-#                     [td.get_text(strip=True) for td in tr.find_all("td")]
-#                     for tr in tbody.find_all("tr")
-#                     if tr.find("td")
-#                 ]
-#                 if not rows:
-#                     continue
-#                 n = len(rows[0])
-#                 col_names = headers[:n] if headers else [f"col{i}" for i in range(n)]
-#                 df = pd.DataFrame(rows, columns=col_names)
-#                 df.insert(0, "date", d.isoformat())
-#                 self.log.info(f"  ↳ NepseTrading HTML parse succeeded at {url}")
-#                 return df
-#             except Exception as exc:
-#                 self.log.debug(f"  HTML candidate {url} failed: {exc}")
-#         return None
-#
-#     def _scrape(self, d: date) -> Optional[pd.DataFrame]:
-#         df = self._try_json(d)
-#         if df is not None:
-#             return df
-#         return self._try_html(d)
-#
-#
-
 # ─── Registry ─────────────────────────────────────────────────────────────────
 
 SCRAPERS: dict[str, type[BaseScraper]] = {
     "sharesansar": SharesansarScraper,
     "merolagani": MerolaganiScraper,
-    # "nepsetrading": NepseTradingScraper,
 }
 
 
@@ -618,7 +511,7 @@ SCRAPERS: dict[str, type[BaseScraper]] = {
 def _parse_args() -> argparse.Namespace:
     today = date.today()
     p = argparse.ArgumentParser(
-        description="NEPSE daily data scraper (ShareSansar / Merolagani / NepseTrading)",
+        description="NEPSE daily data scraper (ShareSansar / Merolagani)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(
