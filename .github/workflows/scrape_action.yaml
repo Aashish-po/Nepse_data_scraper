@@ -27,7 +27,7 @@ jobs:
       
       - name: Execute Scraping Script
         run: |
-          python scrape_nepse.py
+          python scraper.py
       - name: Commit and Push Files
         run: |
            git config --local user.email "poudelashish572@gmail.com"
