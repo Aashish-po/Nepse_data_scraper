@@ -152,5 +152,3 @@ To run daily after market close (≈15:30 NPT), add to Windows Task Scheduler or
 # cron (Linux/Mac) — runs at 10:00 UTC (≈15:45 NPT) Sun–Thu
 0 10 * * 0-4 cd /path/to/nepse_scraper && source venv/bin/activate && python scraper.py --today
 ```
-
-

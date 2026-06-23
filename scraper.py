@@ -3,23 +3,23 @@
 NEPSE Daily Data Scraper
 ========================
 Pulls daily floor sheet / today's share price from:
-  • ShareSansar  (www.sharesansar.com/today-share-price)
-  • Merolagani   (merolagani.com/Floorsheet.aspx)
-  • NepseTrading (nepsetrading.com)
+   • ShareSansar  (www.sharesansar.com/today-share-price)
+   • Merolagani   (merolagani.com/Floorsheet.aspx)
+   • NepseTrading (nepsetrading.com)
 
 Usage
 -----
-  python scraper.py                          # last 7 trading days, all sources
-  python scraper.py --today                  # today only, all sources
-  python scraper.py --source sharesansar     # one source, default date range
-  python scraper.py --start 2025-01-01 --end 2025-03-31
-  python scraper.py --source merolagani --today
+   python scraper.py                          # last 7 trading days, all sources
+   python scraper.py --today                  # today only, all sources
+   python scraper.py --source sharesansar     # one source, default date range
+   python scraper.py --start 2025-01-01 --end 2025-03-31
+   python scraper.py --source merolagani --today
 
 Output
 ------
-  data/sharesansar/YYYY-MM-DD.csv
-  data/merolagani/YYYY-MM-DD.csv
-  data/nepsetrading/YYYY-MM-DD.csv
+   data/sharesansar/YYYY-MM-DD.csv
+   data/merolagani/YYYY-MM-DD.csv
+   data/nepsetrading/YYYY-MM-DD.csv
 """
 
 from __future__ import annotations
@@ -36,6 +36,15 @@ from typing import Optional
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
+import chromedriver_autoinstaller as chromedriver  # type: ignore[import-untyped]
+
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -56,7 +65,8 @@ UA = (
     "Chrome/124.0.0.0 Safari/537.36"
 )
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
 
 logging.basicConfig(
     level=logging.INFO,
@@ -66,7 +76,7 @@ logging.basicConfig(
 )
 
 
-# ─── Utility ─────────────────────────────────────────────────────────────────
+# ─── Utility ──────────────────────────────────────────────────────────────────
 
 
 def is_trading_day(d: date) -> bool:
@@ -164,116 +174,148 @@ class BaseScraper(ABC):
 
 class SharesansarScraper(BaseScraper):
     """
-    Today's Share Price via the DataTables server-side AJAX endpoint.
-    No Selenium required – we replicate the XHR call directly.
-
-    If the AJAX endpoint format ever changes, set AJAX_COLS to match the
-    column `data` keys visible in browser DevTools → Network → XHR.
+    Today's Share Price via Selenium WebDriver.
+    Interacts with the webpage directly instead of using AJAX endpoint.
     """
 
     name = "sharesansar"
     PAGE_URL = "https://www.sharesansar.com/today-share-price"
-    PAGE_SIZE = 500  # large page to minimise round-trips
-
-    # Column `data` keys as configured in the DataTable
-    AJAX_COLS = [
-        "sno",
-        "symbol",
-        "conf",
-        "open",
-        "high",
-        "low",
-        "close",
-        "vwap",
-        "volume",
-        "prev_close",
-        "turnover",
-        "transactions",
-        "diff",
-        "range",
-        "diff_pct",
-    ]
-
-    def _warm_session(self) -> None:
-        """GET the page first to acquire session cookie."""
-        r = self.session.get(self.PAGE_URL, timeout=REQUEST_TIMEOUT)
-        r.raise_for_status()
-
-    def _ajax_payload(self, d: date, draw: int, start: int) -> dict:
-        payload: dict = {
-            "draw": str(draw),
-            "start": str(start),
-            "length": str(self.PAGE_SIZE),
-            "search[value]": "",
-            "search[regex]": "false",
-            # Date param – Sharesansar accepts YYYY-MM-DD on the AJAX call
-            "fromdate": d.strftime("%Y-%m-%d"),
-        }
-        for i, col in enumerate(self.AJAX_COLS):
-            payload[f"columns[{i}][data]"] = col
-            payload[f"columns[{i}][name]"] = ""
-            payload[f"columns[{i}][searchable]"] = "true"
-            payload[f"columns[{i}][orderable]"] = "true"
-            payload[f"columns[{i}][search][value]"] = ""
-            payload[f"columns[{i}][search][regex]"] = "false"
-        return payload
-
-    def _fetch_page(self, d: date, draw: int, start: int) -> dict:
-        r = self.session.post(
-            self.PAGE_URL,
-            data=self._ajax_payload(d, draw, start),  # type: ignore
-            headers={
-                "X-Requested-With": "XMLHttpRequest",
-                "Referer": self.PAGE_URL,
-                "Accept": "application/json, text/javascript, */*; q=0.01",
-            },
-            timeout=REQUEST_TIMEOUT,
-        )
-        r.raise_for_status()
-        ct = r.headers.get("Content-Type", "")
-        if "json" not in ct:
-            raise ValueError(
-                f"Expected JSON from ShareSansar, got {ct!r}. "
-                "The site layout may have changed – check browser DevTools "
-                "for the live XHR request format."
-            )
-        return r.json()
 
     def _scrape(self, d: date) -> Optional[pd.DataFrame]:
-        self._warm_session()
-        time.sleep(0.4)
+        # Setup Chrome options
+        options = Options()
+        options.add_argument("--headless=new")
 
-        first = self._fetch_page(d, draw=1, start=0)
-        total = int(first.get("recordsTotal", 0))
-        if total == 0:
-            return None
-
-        self.log.info(
-            f"  ↳ ShareSansar: {total:,} records across "
-            f"≈{-(-total // self.PAGE_SIZE)} page(s)"
+        options.add_argument(
+            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.115 Safari/537.36"
         )
 
-        rows = list(first.get("data", []))
-        start, draw = self.PAGE_SIZE, 2
-        while start < total:
-            page = self._fetch_page(d, draw=draw, start=start)
-            rows.extend(page.get("data", []))
-            start += self.PAGE_SIZE
-            draw += 1
-            time.sleep(INTER_PAGE_DELAY)
+        chromedriver_path = chromedriver.install()
+        driver = webdriver.Chrome(service=Service(chromedriver_path), options=options)
+        driver.set_page_load_timeout(120)
 
-        if not rows:
+        try:
+            # Format date for the website (MM/DD/YYYY)
+            date_str = d.strftime("%m/%d/%Y")
+
+            # Navigate to the page
+            self.log.info(f"Navigating to {self.PAGE_URL}")
+            driver.get(self.PAGE_URL)
+
+            # Wait for the date input field to be present
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.XPATH, "//input[@id='fromdate']"))
+            )
+
+            # Find the date input and enter the date
+            date_input = driver.find_element(By.XPATH, "//input[@id='fromdate']")
+            time.sleep(2)  # Small delay as in original code
+
+            # Click on the date input to activate it
+            date_input.click()
+
+            # Clear any existing value and send the date
+            date_input.clear()
+            date_input.send_keys(date_str)
+
+            # Click the search button
+            try:
+                search_btn = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable(
+                        (By.XPATH, "//button[@id='btn_todayshareprice_submit']")
+                    )
+                )
+                search_btn.click()
+            except Exception:
+                # Fallback: try clicking the input itself as in original code
+                date_input.click()
+                time.sleep(2)  # Wait for search to initiate
+
+            # Check if no data found
+            if driver.find_elements(
+                By.XPATH,
+                "//*[contains(text(), 'Could not find floorsheet matching the search criteria')]",
+            ):
+                self.log.info("No data found for the given search.")
+                return None
+
+            # Scrape all pages
+            df = pd.DataFrame()
+            count = 0
+
+            while True:
+                count += 1
+                self.log.info(f"Scraping page {count}")
+
+                # Get the page table
+                page_table_df = self._get_page_table(
+                    driver,
+                    "table table-bordered table-striped table-hover dataTable compact no-footer",
+                )
+                if not page_table_df.empty:
+                    df = pd.concat([df, page_table_df], ignore_index=True)
+
+                try:
+                    # Try to find and click the next button
+                    next_btn = driver.find_element(By.LINK_TEXT, "Next")
+                    driver.execute_script("arguments[0].click();", next_btn)
+                    time.sleep(1)  # Wait for page to load
+                except NoSuchElementException:
+                    # No more pages
+                    break
+
+            # Clean the dataframe if we have data
+            if not df.empty:
+                df = self._clean_df(df)
+                # Insert date column at the beginning
+                df.insert(0, "date", d.isoformat())
+
+            return df if not df.empty else None
+
+        except Exception as e:
+            self.log.error(f"Error scraping ShareSansar: {e}")
             return None
+        finally:
+            # Always close the driver
+            driver.quit()
 
-        df = pd.DataFrame(rows)
-        keep = [c for c in self.AJAX_COLS if c in df.columns and c != "sno"]
-        df = df[keep].copy()
-        # Strip commas from numeric strings ("1,234.50" → "1234.50")
-        for col in df.columns:
-            if col != "symbol":
-                df[col] = df[col].astype(str).str.replace(",", "", regex=False)
-        df.insert(0, "date", d.isoformat())
+    def _get_page_table(self, driver, table_class: str) -> pd.DataFrame:
+        """Extract table data from the current page."""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(driver.page_source, "lxml")
+        table = soup.find("table", {"class": table_class})
+
+        if not table:
+            return pd.DataFrame()
+
+        # Extract table data
+        tab_data = [
+            [
+                cell.text.replace("\r", "").replace("\n", "")
+                for cell in row.find_all(["th", "td"])
+            ]
+            for row in table.find_all("tr")
+        ]
+        df = pd.DataFrame(tab_data)
         return df
+
+    def _clean_df(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean the dataframe by removing duplicates and setting proper headers."""
+        if df.empty:
+            return df
+
+        new_df = df.drop_duplicates(keep="first")  # drop all duplicates
+        new_header = new_df.iloc[0]  # grab the first row for the header
+        new_df = new_df[1:]  # take the data less the header row
+        new_df.columns = [str(x) for x in new_header.tolist()]  # type: ignore[assignment]
+
+        # Drop the serial number column (might be "S.No" or "sno")
+        cols_to_drop = [col for col in ["S.No", "sno"] if col in new_df.columns]
+        if cols_to_drop:
+            new_df.drop(cols_to_drop, axis=1, inplace=True)
+
+        return new_df
 
 
 # ─── Merolagani ───────────────────────────────────────────────────────────────
@@ -458,114 +500,115 @@ class MerolaganiScraper(BaseScraper):
         return final
 
 
-# ─── NepseTrading ─────────────────────────────────────────────────────────────
-
-
-class NepseTradingScraper(BaseScraper):
-    """
-    Daily price data from nepsetrading.com.
-
-    Tries two strategies in order:
-      1. JSON REST endpoint (if the site exposes one)
-      2. HTML table parsing (universal fallback)
-
-    Adjust CANDIDATES if the URL structure changes.
-    """
-
-    name = "nepsetrading"
-
-    # Ordered list of (url, params_factory) to try
-    @property
-    def _candidates(self):
-        return [
-            (
-                "https://nepsetrading.com/trading/daily-price",
-                lambda d: {"date": d.strftime("%Y-%m-%d")},
-            ),
-            (
-                "https://nepsetrading.com/daily-price",
-                lambda d: {"date": d.strftime("%Y-%m-%d")},
-            ),
-            ("https://nepsetrading.com", lambda d: {}),
-        ]
-
-    def _try_json(self, d: date) -> Optional[pd.DataFrame]:
-        """Attempt to discover a REST/JSON endpoint."""
-        json_urls = [
-            "https://nepsetrading.com/api/v1/trading/daily-price",
-            "https://nepsetrading.com/api/daily-price",
-        ]
-        date_str = d.strftime("%Y-%m-%d")
-        for url in json_urls:
-            try:
-                r = self.session.get(
-                    url,
-                    params={"date": date_str, "page": 1, "per_page": 2000},  # type: ignore
-                    headers={"Accept": "application/json"},
-                    timeout=REQUEST_TIMEOUT,
-                )
-                if r.status_code == 200 and "json" in r.headers.get("Content-Type", ""):
-                    data = r.json()
-                    records = (
-                        data
-                        if isinstance(data, list)
-                        else data.get("data") or data.get("records") or []
-                    )
-                    if records:
-                        df = pd.DataFrame(records)
-                        df.insert(0, "date", d.isoformat())
-                        return df
-            except Exception:
-                pass
-        return None
-
-    def _try_html(self, d: date) -> Optional[pd.DataFrame]:
-        for url, params_fn in self._candidates:
-            try:
-                r = self.session.get(
-                    url,
-                    params=params_fn(d),  # type: ignore
-                    headers={"Referer": "https://nepsetrading.com/"},
-                    timeout=REQUEST_TIMEOUT,
-                )
-                if r.status_code != 200:
-                    continue
-                soup = BeautifulSoup(r.text, "html.parser")
-                table = soup.find("table")
-                if not table:
-                    continue
-                headers = [th.get_text(strip=True) for th in table.find_all("th")]
-                tbody = table.find("tbody") or table
-                rows = [
-                    [td.get_text(strip=True) for td in tr.find_all("td")]
-                    for tr in tbody.find_all("tr")
-                    if tr.find("td")
-                ]
-                if not rows:
-                    continue
-                n = len(rows[0])
-                col_names = headers[:n] if headers else [f"col{i}" for i in range(n)]
-                df = pd.DataFrame(rows, columns=col_names)
-                df.insert(0, "date", d.isoformat())
-                self.log.info(f"  ↳ NepseTrading HTML parse succeeded at {url}")
-                return df
-            except Exception as exc:
-                self.log.debug(f"  HTML candidate {url} failed: {exc}")
-        return None
-
-    def _scrape(self, d: date) -> Optional[pd.DataFrame]:
-        df = self._try_json(d)
-        if df is not None:
-            return df
-        return self._try_html(d)
-
+# # ─── NepseTrading ─────────────────────────────────────────────────────────────
+#
+#
+# class NepseTradingScraper(BaseScraper):
+#     """
+#     Daily price data from nepsetrading.com.
+#
+#     Tries two strategies in order:
+#       1. JSON REST endpoint (if the site exposes one)
+#       2. HTML table parsing (universal fallback)
+#
+#     Adjust CANDIDATES if the URL structure changes.
+#     """
+#
+#     name = "nepsetrading"
+#
+#     # Ordered list of (url, params_factory) to try
+#     @property
+#     def _candidates(self):
+#         return [
+#             (
+#                 "https://nepsetrading.com/trading/daily-price",
+#                 lambda d: {"date": d.strftime("%Y-%m-%d")},
+#             ),
+#             (
+#                 "https://nepsetrading.com/daily-price",
+#                 lambda d: {"date": d.strftime("%Y-%m-%d")},
+#             ),
+#             ("https://nepsetrading.com", lambda d: {}),
+#         ]
+#
+#     def _try_json(self, d: date) -> Optional[pd.DataFrame]:
+#         """Attempt to discover a REST/JSON endpoint."""
+#         json_urls = [
+#             "https://nepsetrading.com/api/v1/trading/daily-price",
+#             "https://nepsetrading.com/api/daily-price",
+#         ]
+#         date_str = d.strftime("%Y-%m-%d")
+#         for url in json_urls:
+#             try:
+#                 r = self.session.get(
+#                     url,
+#                     params={"date": date_str, "page": 1, "per_page": 2000},  # type: ignore
+#                     headers={"Accept": "application/json"},
+#                     timeout=REQUEST_TIMEOUT,
+#                 )
+#                 if r.status_code == 200 and "json" in r.headers.get("Content-Type", ""):
+#                     data = r.json()
+#                     records = (
+#                         data
+#                         if isinstance(data, list)
+#                         else data.get("data") or data.get("records") or []
+#                     )
+#                     if records:
+#                         df = pd.DataFrame(records)
+#                         df.insert(0, "date", d.isoformat())
+#                         return df
+#             except Exception:
+#                 pass
+#         return None
+#
+#     def _try_html(self, d: date) -> Optional[pd.DataFrame]:
+#         for url, params_fn in self._candidates:
+#             try:
+#                 r = self.session.get(
+#                     url,
+#                     params=params_fn(d),  # type: ignore
+#                     headers={"Referer": "https://nepsetrading.com/"},
+#                     timeout=REQUEST_TIMEOUT,
+#                 )
+#                 if r.status_code != 200:
+#                     continue
+#                 soup = BeautifulSoup(r.text, "html.parser")
+#                 table = soup.find("table")
+#                 if not table:
+#                     continue
+#                 headers = [th.get_text(strip=True) for th in table.find_all("th")]
+#                 tbody = table.find("tbody") or table
+#                 rows = [
+#                     [td.get_text(strip=True) for td in tr.find_all("td")]
+#                     for tr in tbody.find_all("tr")
+#                     if tr.find("td")
+#                 ]
+#                 if not rows:
+#                     continue
+#                 n = len(rows[0])
+#                 col_names = headers[:n] if headers else [f"col{i}" for i in range(n)]
+#                 df = pd.DataFrame(rows, columns=col_names)
+#                 df.insert(0, "date", d.isoformat())
+#                 self.log.info(f"  ↳ NepseTrading HTML parse succeeded at {url}")
+#                 return df
+#             except Exception as exc:
+#                 self.log.debug(f"  HTML candidate {url} failed: {exc}")
+#         return None
+#
+#     def _scrape(self, d: date) -> Optional[pd.DataFrame]:
+#         df = self._try_json(d)
+#         if df is not None:
+#             return df
+#         return self._try_html(d)
+#
+#
 
 # ─── Registry ─────────────────────────────────────────────────────────────────
 
 SCRAPERS: dict[str, type[BaseScraper]] = {
     "sharesansar": SharesansarScraper,
     "merolagani": MerolaganiScraper,
-    "nepsetrading": NepseTradingScraper,
+    # "nepsetrading": NepseTradingScraper,
 }
 
 
