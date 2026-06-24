@@ -8,6 +8,9 @@ on:
     - cron: '15 10 * * *'  # 4:00 PM Nepal Time
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
