@@ -5,7 +5,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: '15 10 * * *'  # 4:00 PM Nepal Time
+    - cron: '15 10 * * *'  # 4:00 PM Nepal Time (10:15 UTC)
   workflow_dispatch:
 
 permissions:
@@ -13,21 +13,20 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04  # Pinned to older Ubuntu to resolve Python 3.9 availability error
     steps:
-      - name: Checkout 
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Python Environment
         uses: actions/setup-python@v5
         with:
-          python-version: 3.9
-      
+          python-version: '3.9'
+  
       - name: Install Dependencies
         run: |
           pip install -r requirements.txt
-      
+  
       - name: Execute Scraping Script
         run: |
           python scraper.py
@@ -38,7 +37,6 @@ jobs:
           git config --local user.name "aashishpaudel"
           
           git add .
-
           if ! git diff --cached --quiet; then
             git commit -m "Auto-update: NEPSE data scraped"
             git push origin main
